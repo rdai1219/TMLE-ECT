@@ -1,0 +1,13 @@
+"","Scenario","Interval","Mean_SE","Coverage"
+"1","Q misspecified; g correct","EIF-Wald",0.0532685102440241,0.917
+"2","Q misspecified; g correct","Target-step bootstrap, normal",0.0676383171613017,0.962
+"3","Q misspecified; g correct","Target-step bootstrap, percentile",NA,0.974
+"4","Q correct; g misspecified","EIF-Wald",0.042665564093475,0.936
+"5","Q correct; g misspecified","Target-step bootstrap, normal",0.0402553027326017,0.922
+"6","Q correct; g misspecified","Target-step bootstrap, percentile",NA,0.921
+"7","Both misspecified","EIF-Wald",0.0575927116095435,0.924
+"8","Both misspecified","Target-step bootstrap, normal",0.0572765508123202,0.927
+"9","Both misspecified","Target-step bootstrap, percentile",NA,0.943
+"10","Both correctly specified","EIF-Wald",0.043311916122074,0.913
+"11","Both correctly specified","Target-step bootstrap, normal",0.0528716602264512,0.946
+"12","Both correctly specified","Target-step bootstrap, percentile",NA,0.955
