@@ -4,20 +4,6 @@ rm(list = ls())
 ## ==================================================================
 ## Simulation driver: moderate-overlap DGP (Sec 5.2.1), all 5 h-choices
 ## (tilted/ATE/ATT/ATC/ATO), propensity-score truncation ON ([0.025,0.975]).
-##
-## Reproduces the tables reported in the paper's Section 5.2 and
-## Appendix A.4. Sources tmle_h_methods.R (same directory as this
-## script) for every estimator/nuisance-fitting/estimate_tau_h()
-## function -- nothing method-related is redefined here. This file
-## owns only what's specific to THIS study: the DGP, the Sec 5.2.3
-## working models, the h(x) choices, the per-h truth computation, and
-## the replication drivers.
-##
-## Before running: set the R working directory to this script's own
-## folder (TMLE-ECT/R). In RStudio, open this file and use
-## Session > Set Working Directory > To Source File Location, or run
-## setwd() to the R/ folder yourself. Output CSVs are written to
-## ../results/ relative to that.
 ## ==================================================================
 
 results_dir <- file.path("..", "results")
@@ -38,13 +24,7 @@ gform_correct <- A ~ X1 + X2 + X3 + I(X2^2) + I(X3^2)
 
 
 ## ------------------------------------------------------------------
-## SECTION 2: NAMED-ESTIMAND h(x) CHOICES (Sec 2)
-##
-## h_fun_ATT/ATC/ATO take (X1,X2,X3,X4,g) where g is whatever
-## propensity value is passed in -- used both for true_g_5_2_1() (a
-## reference-only oracle g, not used to define ATT/ATC/ATO's target
-## here) and, more importantly, for mc_truth_given_ghat()'s ESTIMATED
-## ghat, which is what actually defines the target per Remark 2.
+## SECTION 2: NAMED-ESTIMAND h(x) CHOICES 
 ## ------------------------------------------------------------------
 
 true_g_5_2_1 <- function(X1, X2, X3, p1 = 0.4, p0 = 0.6) {
@@ -60,8 +40,7 @@ h_fun_ATO <- function(X1, X2, X3, X4, g) g * (1 - g)
 
 
 ## ------------------------------------------------------------------
-## SECTION 3: DATA GENERATION -- random design (Sec 5.2.1),
-## moderate-overlap control arm.
+## SECTION 3: DATA GENERATION 
 ## ------------------------------------------------------------------
 
 simulate_dgp_5_2_1 <- function(n1 = 200, n0 = 300) {
@@ -85,11 +64,6 @@ simulate_dgp_5_2_1 <- function(n1 = 200, n0 = 300) {
        Q0_true = Q0_true, Q1_true = Q1_true)
 }
 
-## Monte Carlo approximation of the population truth for h-choices
-## that do NOT depend on g (tilted, ATE): computed ONCE, not per
-## replication. Draw count (5,000,000, split 2M/3M matching the
-## 0.4/0.6 design mixture) is a precision choice, independent of the
-## covariate parameters -- see the "how many draws" discussion.
 approximate_true_tau_5_2_1 <- function(n1_large = 2e6, n0_large = 3e6,
                                         chunk_size = 250000, seed = 20260625) {
   set.seed(seed)
@@ -155,12 +129,7 @@ approximate_true_tau_general <- function(h_fun, n1_large = 2e6, n0_large = 3e6,
   as.numeric(numerator / denominator)
 }
 
-## Per-replication truth for h = eta(ghat) (ATT/ATC/ATO), Remark 2:
-## draws a fresh, smaller Monte Carlo sample, computes the TRUE Q1/Q0,
-## and predicts ghat(x) from the FITTED g model passed in -- ghat is
-## truncated the same way fit_g() truncates it (gbounds), so the
-## "truth" matches whatever h actually equals in the estimators,
-## truncated or not.
+## Per-replication truth for h = eta(ghat) (ATT/ATC/ATO)
 mc_truth_given_ghat <- function(g_fit, h_fun, mc_n = 10000,
                                  gbounds = c(0.025, 0.975),
                                  p1 = 0.4, p0 = 0.6) {
@@ -193,13 +162,6 @@ mc_truth_given_ghat <- function(g_fit, h_fun, mc_n = 10000,
 
 ## ------------------------------------------------------------------
 ## SECTION 4: ONE REPLICATION
-##
-## Fits Q_wrong/Q_correct/g_wrong/g_correct once, then calls
-## estimate_tau_h_given_fits() (tmle_h_methods.R) for each of the 4
-## nuisance-model scenarios -- no estimator math lives in this file.
-## h is passed as a fixed vector (tilted/ATE) or a function of the
-## fitted g1W/g0W (ATT/ATC/ATO); estimate_tau_h_given_fits() dispatches
-## on which one it got.
 ## ------------------------------------------------------------------
 
 one_simulation <- function(h_choice, true_tau = NULL, n1 = 200, n0 = 300, n_boot = 300,
@@ -310,7 +272,7 @@ summarize_table4 <- function(results) {
 
 
 ## ------------------------------------------------------------------
-## SECTION 6: RUN -- moderate overlap, ALL 5 h-choices, truncation ON
+## SECTION 6: RUN ALL 5 h-choices, truncation ON
 ## ([0.025, 0.975], matching the tmle package default)
 ## ------------------------------------------------------------------
 

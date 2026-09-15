@@ -1,65 +1,26 @@
 ## ==================================================================
 ## tmle_h_methods.R
 ##
-## The "methods" module for the balancing-weight TMLE framework (Secs
-## 3.1, 3.2, 3.3, 3.3.4). Nothing in this file is specific to any one
-## simulation study or DGP -- no hard-coded covariate distributions,
-## no Sec-5.2-specific formulas. A simulation (or applied-analysis)
-## script sources this file and supplies its own data, h(x)
-## specification, and nuisance-model choices.
+## The "methods" module for the TMLE-ECT framework 
 ##
-## Three layers, in increasing order of convenience:
-##   1. Pure estimators (mle_h/ipw_h/aipw_h/tmle_h/tmle_bootstrap_h) --
-##      operate only on already-fitted Q1W/Q0W/QAW/g1W and a
-##      precomputed h vector. Never fit anything themselves.
-##   2. Nuisance fitting (fit_Q/fit_g) -- GLM or SuperLearner, with a
-##      gbounds argument controlling propensity truncation (or its
-##      absence: gbounds = c(0,1) is a no-op clamp).
-##   3. estimate_tau_h() / estimate_tau_h_given_fits() -- the single
-##      user-facing entry point requested: given data, an h(x)
-##      specification, and Q/g fitting choices (including whether to
-##      truncate), fits everything and returns MLE/IPW/AIPW/TMLE point
-##      estimates plus TMLE's EIF-Wald and target-step-bootstrap
-##      inference. estimate_tau_h_given_fits() is the same thing but
-##      takes already-fitted Q/g objects, so a caller that needs the
-##      same Q/g fit reused across several h's (e.g. a simulation
-##      study looping over h-choices under one set of nuisance
-##      scenarios) doesn't have to refit.
-##
-## h(x) can be specified either way to estimate_tau_h()/
-## estimate_tau_h_given_fits():
-##   h = <numeric vector of length N>     a FIXED, precomputed tilting
-##                                         function (e.g. a prespecified
-##                                         h(x), or h=1 for the ATE)
-##   h = <function(g1W, g0W)>             a function of the FITTED
-##                                         propensity score (e.g.
-##                                         function(g1W,g0W) g1W for
-##                                         the ATT) -- evaluated AFTER
-##                                         g is fit, so it automatically
-##                                         tracks whatever g0 (correct,
-##                                         misspecified, GLM, or SL)
-##                                         was actually estimated. See
-##                                         Remark 2 for why this is the
-##                                         appropriate target for
-##                                         g-dependent h's.
-## ==================================================================
+
 
 
 ## ------------------------------------------------------------------
 ## LAYER 1: PURE ESTIMATORS
 ## ------------------------------------------------------------------
 
-## MLE / g-computation, Sec 3.1: tau_h^MLE = sum(h*(Q1-Q0)) / sum(h)
+## MLE 
 mle_h <- function(h, Q1W, Q0W) {
   sum(h * (Q1W - Q0W)) / sum(h)
 }
 
-## IPW, Sec 3.1
+## IPW
 ipw_h <- function(Y, A, h, g1W, g0W = 1 - g1W) {
   sum(h * (A * Y / g1W - (1 - A) * Y / g0W)) / sum(h)
 }
 
-## AIPW, Sec 5.2.2 (doubly-robust benchmark). Returns the point
+## AIPW
 ## estimate plus an EIF-based SE (same EIF form used by TMLE below).
 aipw_h <- function(Y, A, h, Q1W, Q0W, g1W, g0W = 1 - g1W) {
   N <- length(Y)
@@ -71,9 +32,7 @@ aipw_h <- function(Y, A, h, Q1W, Q0W, g1W, g0W = 1 - g1W) {
 }
 
 ## Shared TMLE fluctuation-fitting step: the target-step logistic
-## regression logit[Q(X,A;eps)] = logit[Qhat(X,A)] + eps*H(X,A), Sec
-## 3.3.1. Factored out so tmle_h and its bootstrap can both call it
-## on different subsets of rows without duplicating logic.
+## regression logit[Q(X,A;eps)] = logit[Qhat(X,A)] + eps*H(X,A)
 fit_eps_h <- function(Y, H, logitQAW, indices = seq_along(Y)) {
   dat <- data.frame(Y = Y[indices], H = H[indices], off = logitQAW[indices])
   fit <- suppressWarnings(glm(Y ~ -1 + H + offset(off), data = dat, family = binomial()))
@@ -82,9 +41,8 @@ fit_eps_h <- function(Y, H, logitQAW, indices = seq_along(Y)) {
   eps
 }
 
-## TMLE: initial step + target step (Sec 3.3.1) and EIF-based SE
-## (Sec 3.3.4). H/logitQAW are returned so the bootstrap below can
-## reuse them exactly, instead of recomputing.
+## TMLE: initial step + target step
+
 tmle_h <- function(Y, A, h, QAW, Q1W, Q0W, g1W, g0W = 1 - g1W) {
   N <- length(Y)
   h_star <- h / mean(h)
@@ -108,11 +66,7 @@ tmle_h <- function(Y, A, h, QAW, Q1W, Q0W, g1W, g0W = 1 - g1W) {
        H = H, logitQAW = logitQAW)
 }
 
-## Target-step-only stratified bootstrap, Sec 5.2.4: initial nuisance
-## fits (Q1W, Q0W, g1W, h) are held fixed; only eps is refit on each
-## resample. `strata` controls what's held fixed in composition
-## (defaults to arm-only stratification); `subset` restricts which
-## rows are eligible for resampling at all (defaults to everything).
+## Target-step-only stratified bootstrap
 tmle_bootstrap_h <- function(Y, A, h, Q1W, Q0W, g1W, g0W = 1 - g1W,
                               tmle_fit, n_boot = 300,
                               strata = A, subset = seq_along(Y)) {
@@ -138,9 +92,7 @@ tmle_bootstrap_h <- function(Y, A, h, Q1W, Q0W, g1W, g0W = 1 - g1W,
 
 
 ## ------------------------------------------------------------------
-## LAYER 2: NUISANCE FITTING
-## Everything about HOW Q and g are estimated -- formula, GLM vs.
-## Super Learner, propensity truncation -- lives here.
+## LAYER 2: NUISANCE FITTING (Q and g), can choose glm or super learner
 ## ------------------------------------------------------------------
 
 fit_Q <- function(Y, A, W, method = c("glm", "SL"),
@@ -166,9 +118,7 @@ fit_Q <- function(Y, A, W, method = c("glm", "SL"),
   list(QAW = QAW, Q1W = Q1W, Q0W = Q0W, fit = fit, method = method)
 }
 
-## gbounds = c(0.025, 0.975) truncates; gbounds = c(0, 1) is a no-op
-## clamp (glm/SL-fitted probabilities are always strictly inside
-## (0,1)), i.e. this is how "truncate = FALSE" is realized upstream.
+## gbounds = c(0.025, 0.975) is default truncates; 
 fit_g <- function(A, W, method = c("glm", "SL"),
                    gform = NULL, SL.library = c("SL.glm"), gbounds = c(0.025, 0.975), ...) {
   method <- match.arg(method)
