@@ -1,38 +1,9 @@
-setwd("C:/Users/DAIRX/OneDrive - AbbVie Inc (O365)/Documents/tehTMLE/Yixin_Revision/Rcodes")
-
-## ==================================================================
-## Simulation driver: ORIGINAL (non-moderate-overlap) DGP, tilted h(x)
-## only, using tmle_h_methods.R for all estimation (MLE/IPW/AIPW/TMLE,
-## EIF-Wald + target-step-bootstrap inference). Propensity-score
-## truncation ON ([0.025, 0.975]).
-##
-## DGP matches the simulation-section writeup: n1 = 200 treated,
-## n0 = 300 external controls;
-##   X1 ~ Bernoulli(0.68) / Bernoulli(0.32)      [treated / control]
-##   X2 ~ N(0.75, 1.00^2) / N(-0.55, 0.85^2)
-##   X3 ~ N(0.45, 0.80^2) / N(-0.35, 1.15^2)
-##   X4 ~ Uniform(-1, 1)  [same in both arms -> drops out of the true g]
-## Outcome model (matches FixedX_Rcodes_8.R, the script that produced
-## the original table3_tilted.csv/table4_tilted.csv/ps_overlap.pdf):
-##   logit Q0(X,0) = -1.20 + 0.60 X1 + 2.10 sin(1.40 X2) + 1.10 tanh(X3)
-##                   + 0.85 (X3^2 - 1) + 0.60 X2 X4
-##   logit Q0(X,1) = logit Q0(X,0) + 0.60 + 0.75 X1 + 1.75 sin(1.70 X2)
-##                   - 1.30 (X3^2 - 1) + 1.00 X2 X4
-## True propensity score (X4 drops out of the likelihood ratio, same
-## covariate marginals as above):
-##   g(X) = expit(-1.14 + 1.51 X1 + 1.51 X2 + 0.19 X2^2 + 0.97 X3 - 0.40 X3^2)
-## Tilted h(x) = exp(-0.18 X2^2 - 0.10 X3^2), unchanged from prior scripts.
-## ==================================================================
-
 rm(list = ls())
 
 source("tmle_h_methods.R")
 
 
-## ------------------------------------------------------------------
-## SECTION 1: WORKING MODELS (Sec 5.2.3) -- functional forms only,
-## independent of the DGP's specific means/variances.
-## ------------------------------------------------------------------
+
 
 Qform_wrong   <- Y ~ A + X1 + X2 + X3 + X4
 Qform_correct <- Y ~ A + X1 + sin(1.4*X2) + tanh(X3) + I(X3^2) + X2:X4 +
@@ -42,8 +13,7 @@ gform_correct <- A ~ X1 + X2 + X3 + I(X2^2) + I(X3^2)
 
 
 ## ------------------------------------------------------------------
-## SECTION 2: DATA GENERATION -- original-overlap DGP
-## ------------------------------------------------------------------
+
 
 simulate_dgp_original <- function(n1 = 200, n0 = 300) {
   treated <- data.frame(A = 1L, X1 = rbinom(n1, 1, 0.68), X2 = rnorm(n1, 0.75, 1.00),
@@ -76,10 +46,7 @@ true_g_original <- function(X1, X2, X3, n1 = 200, n0 = 300) {
 }
 
 
-## ------------------------------------------------------------------
-## SECTION 3: MONTE CARLO TRUTH FOR THE TILTED h
-## Computed once (h does not depend on g), via chunked large-sample
-## draws from the same design mixture (n1 : n0 = 2:3).
+
 ## ------------------------------------------------------------------
 
 approximate_true_tau_tilted <- function(n1_large = 2e6, n0_large = 3e6,
@@ -116,10 +83,6 @@ approximate_true_tau_tilted <- function(n1_large = 2e6, n0_large = 3e6,
 }
 
 
-## ------------------------------------------------------------------
-## SECTION 4: ONE REPLICATION (tilted h only, 4 nuisance scenarios)
-## All estimation is delegated to tmle_h_methods.R's fit_Q()/fit_g()/
-## estimate_tau_h_given_fits() -- no estimator logic is redefined here.
 ## ------------------------------------------------------------------
 
 one_simulation_tilted <- function(true_tau, n1 = 200, n0 = 300, n_boot = 1000,
@@ -159,8 +122,6 @@ one_simulation_tilted <- function(true_tau, n1 = 200, n0 = 300, n_boot = 1000,
 }
 
 
-## ------------------------------------------------------------------
-## SECTION 5: DRIVER + SUMMARY TABLES
 ## ------------------------------------------------------------------
 
 methods_used <- c("MLE", "IPW", "AIPW", "TMLE")
@@ -203,11 +164,6 @@ summarize_table4 <- function(results) {
   }))
 }
 
-
-## ------------------------------------------------------------------
-## SECTION 6: RUN + WRITE table3_tilted_boot1000.csv / table4_tilted_boot1000.csv
-## (renamed from table3_tilted.csv/table4_tilted.csv so the originals,
-## produced with n_boot = 300, are not overwritten)
 ## ------------------------------------------------------------------
 
 gbounds_run <- c(0.025, 0.975)   # truncation ON
@@ -217,36 +173,6 @@ write.csv(summarize_table3(results_tilted), "table3_tilted.csv")
 write.csv(summarize_table4(results_tilted), "table4_tilted.csv")
 
 
-## ------------------------------------------------------------------
-## SECTION 7: ps_overlap.pdf -- estimated propensity overlap (g correct)
-## ------------------------------------------------------------------
 
-plot_ps_overlap <- function(A, g1W, breaks = seq(0, 1, by = 0.05),
-                             gbounds = c(0.025, 0.975),
-                             main = "Estimated propensity score overlap (g correct)") {
-  col_treated <- adjustcolor("#2a78d6", alpha.f = 0.55)  # categorical slot 1 (blue)
-  col_control <- adjustcolor("#eb6834", alpha.f = 0.55)  # categorical slot 2 (orange)
 
-  h1 <- hist(g1W[A == 1], breaks = breaks, plot = FALSE)
-  h0 <- hist(g1W[A == 0], breaks = breaks, plot = FALSE)
-  ymax <- max(h1$density, h0$density) * 1.05
 
-  plot(h1, freq = FALSE, col = col_treated, border = "white",
-       xlim = range(breaks), ylim = c(0, ymax),
-       main = main, xlab = "Estimated P(A = 1 | X)", ylab = "Density")
-  plot(h0, freq = FALSE, col = col_control, border = "white", add = TRUE)
-
-  if (!is.null(gbounds)) {
-    abline(v = gbounds, lty = 2, col = "#898781")   # propensity truncation bounds
-  }
-
-  legend("topright", legend = c("Treated (A = 1)", "Control (A = 0)"),
-         fill = c(col_treated, col_control), border = NA, bty = "n")
-}
-
-d_plot <- simulate_dgp_original(n1 = 200, n0 = 300)
-g_correct_plot <- fit_g(d_plot$A, d_plot$W, method = "glm", gform = gform_correct)
-
-pdf("ps_overlap.pdf", width = 7, height = 5)
-plot_ps_overlap(d_plot$A, g_correct_plot$g1W)
-dev.off()
